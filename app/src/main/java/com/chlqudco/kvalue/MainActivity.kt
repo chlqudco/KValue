@@ -1,16 +1,19 @@
 package com.chlqudco.kvalue
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.core.net.toUri
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.chlqudco.kvalue.data.SampleStockRepository
+import com.chlqudco.kvalue.ui.StockScreen
+import com.chlqudco.kvalue.ui.StockViewModel
 import com.chlqudco.kvalue.ui.theme.KValueTheme
 
 class MainActivity : ComponentActivity() {
@@ -19,29 +22,27 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             KValueTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+                val repository = remember { SampleStockRepository() }
+                val stockViewModel: StockViewModel = viewModel(
+                    factory = StockViewModel.factory(repository)
+                )
+                val state by stockViewModel.uiState.collectAsStateWithLifecycle()
+                StockScreen(
+                    state = state,
+                    onQueryChanged = stockViewModel::onQueryChanged,
+                    onSearch = stockViewModel::search,
+                    onRefresh = stockViewModel::refresh,
+                    onPerChanged = stockViewModel::onPerChanged,
+                    onOpenDart = ::openExternalUrl
+                )
             }
         }
     }
-}
 
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    KValueTheme {
-        Greeting("Android")
+    private fun openExternalUrl(url: String): Boolean = try {
+        startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
     }
 }
