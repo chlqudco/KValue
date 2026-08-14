@@ -11,7 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.chlqudco.kvalue.data.SampleStockRepository
+import com.chlqudco.kvalue.data.StockRepositoryFactory
 import com.chlqudco.kvalue.ui.StockScreen
 import com.chlqudco.kvalue.ui.StockViewModel
 import com.chlqudco.kvalue.ui.theme.KValueTheme
@@ -22,7 +22,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             KValueTheme {
-                val repository = remember { SampleStockRepository() }
+                val repository = remember {
+                    StockRepositoryFactory.create(applicationContext)
+                }
                 val stockViewModel: StockViewModel = viewModel(
                     factory = StockViewModel.factory(repository)
                 )

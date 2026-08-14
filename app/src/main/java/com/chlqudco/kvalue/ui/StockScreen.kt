@@ -41,6 +41,9 @@ import com.chlqudco.kvalue.R
 import com.chlqudco.kvalue.common.AppError
 import com.chlqudco.kvalue.common.NumberFormatter
 import com.chlqudco.kvalue.domain.model.StockAnalysis
+import com.chlqudco.kvalue.domain.model.MissingDataSection
+import com.chlqudco.kvalue.domain.model.DataProvider
+import com.chlqudco.kvalue.domain.model.DataType
 import com.chlqudco.kvalue.domain.model.SupportReason
 import com.chlqudco.kvalue.domain.model.SupportStatus
 import com.chlqudco.kvalue.ui.components.FairValueCard
@@ -331,7 +334,8 @@ private fun PriceSummaryCard(
 ) {
     val price = analysis.price
     val priceText = NumberFormatter.won(price.currentPrice)
-    val changeText = NumberFormatter.signedPercentage(price.changeRate)
+    val changeText = price.changeRate?.let(NumberFormatter::signedPercentage)
+        ?: stringResource(R.string.data_missing)
     val description = stringResource(
         R.string.price_accessibility,
         analysis.companyName,
@@ -397,8 +401,12 @@ private fun PricePrimaryInfo(
         Text(
             text = "${stringResource(R.string.change_rate)} $changeText",
             color = when {
-                analysis.price.changeRate > 0.0 -> MaterialTheme.colorScheme.tertiary
-                analysis.price.changeRate < 0.0 -> MaterialTheme.colorScheme.error
+                analysis.price.changeRate != null && analysis.price.changeRate > 0.0 -> {
+                    MaterialTheme.colorScheme.tertiary
+                }
+                analysis.price.changeRate != null && analysis.price.changeRate < 0.0 -> {
+                    MaterialTheme.colorScheme.error
+                }
                 else -> MaterialTheme.colorScheme.onPrimaryContainer
             }
         )
@@ -443,16 +451,38 @@ private fun SourcesCard(analysis: StockAnalysis) {
                 Text(
                     text = stringResource(
                         R.string.source_row,
-                        source.provider,
-                        source.dataType,
+                        dataProviderText(source.provider),
+                        dataTypeText(source.dataType),
                         source.asOf
                     ),
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            if (analysis.sources.any { it.provider == "샘플 데이터" }) {
+            if (analysis.sources.any { it.provider == DataProvider.SAMPLE }) {
                 Text(
                     text = stringResource(R.string.sample_data_notice),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            if (analysis.missingData.isNotEmpty()) {
+                val missingDataLabels = mapOf(
+                    MissingDataSection.PRICE_HISTORY to stringResource(
+                        R.string.missing_price_history
+                    ),
+                    MissingDataSection.FINANCIAL_RATIOS to stringResource(
+                        R.string.missing_financial_ratios
+                    ),
+                    MissingDataSection.ANNUAL_FINANCIALS to stringResource(
+                        R.string.missing_annual_financials
+                    ),
+                    MissingDataSection.DART to stringResource(R.string.missing_dart)
+                )
+                val missingSections = analysis.missingData
+                    .sortedBy(MissingDataSection::ordinal)
+                    .joinToString(", ") { missingDataLabels.getValue(it) }
+                Text(
+                    text = stringResource(R.string.partial_data_notice, missingSections),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error
                 )
@@ -464,6 +494,22 @@ private fun SourcesCard(analysis: StockAnalysis) {
             )
         }
     }
+}
+
+@Composable
+private fun dataProviderText(provider: DataProvider): String = when (provider) {
+    DataProvider.SAMPLE -> stringResource(R.string.provider_sample)
+    DataProvider.KIS -> stringResource(R.string.provider_kis)
+    DataProvider.OPEN_DART -> stringResource(R.string.provider_open_dart)
+}
+
+@Composable
+private fun dataTypeText(dataType: DataType): String = when (dataType) {
+    DataType.PRICE -> stringResource(R.string.data_type_price)
+    DataType.ADJUSTED_DAILY_PRICE -> stringResource(R.string.data_type_adjusted_daily_price)
+    DataType.FINANCIAL_RATIOS -> stringResource(R.string.data_type_financial_ratios)
+    DataType.INCOME_STATEMENT -> stringResource(R.string.data_type_income_statement)
+    DataType.DISCLOSURE_LINK -> stringResource(R.string.data_type_disclosure_link)
 }
 
 @Composable

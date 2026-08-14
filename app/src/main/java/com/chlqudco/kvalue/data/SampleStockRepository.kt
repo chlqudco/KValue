@@ -1,8 +1,11 @@
 package com.chlqudco.kvalue.data
 
 import com.chlqudco.kvalue.common.AppError
+import com.chlqudco.kvalue.common.AppLogger
 import com.chlqudco.kvalue.domain.model.AnnualFinancial
 import com.chlqudco.kvalue.domain.model.DataSourceInfo
+import com.chlqudco.kvalue.domain.model.DataProvider
+import com.chlqudco.kvalue.domain.model.DataType
 import com.chlqudco.kvalue.domain.model.FinancialRatios
 import com.chlqudco.kvalue.domain.model.MarketType
 import com.chlqudco.kvalue.domain.model.PricePoint
@@ -23,15 +26,32 @@ class SampleStockRepository : StockRepository {
         stockCode: String,
         forceRefresh: Boolean
     ): StockAnalysisResult {
+        val startedAtMillis = AppLogger.analysisStarted(stockCode, forceRefresh)
         if (!forceRefresh) {
-            cache[stockCode]?.let { return StockAnalysisResult.Success(it) }
+            cache[stockCode]?.let {
+                AppLogger.cacheHit("SAMPLE", "stock_analysis", "memory", stockCode)
+                AppLogger.analysisSucceeded(
+                    stockCode = stockCode,
+                    missingSectionCount = it.missingData.size,
+                    supported = true,
+                    startedAtMillis = startedAtMillis
+                )
+                return StockAnalysisResult.Success(it)
+            }
         }
         delay(300)
         if (stockCode != "005930") {
+            AppLogger.analysisFailed(stockCode, AppError.StockNotFound, startedAtMillis)
             return StockAnalysisResult.Failure(AppError.StockNotFound)
         }
         val analysis = SampleStockData.samsungElectronics()
         cache[stockCode] = analysis
+        AppLogger.analysisSucceeded(
+            stockCode = stockCode,
+            missingSectionCount = analysis.missingData.size,
+            supported = true,
+            startedAtMillis = startedAtMillis
+        )
         return StockAnalysisResult.Success(analysis)
     }
 }
@@ -90,8 +110,16 @@ object SampleStockData {
             ),
             support = SupportStatus.Supported,
             sources = listOf(
-                DataSourceInfo("샘플 데이터", "가격·차트", "2026-08-11 15:30"),
-                DataSourceInfo("샘플 데이터", "재무", "2025년 연간")
+                DataSourceInfo(
+                    DataProvider.SAMPLE,
+                    DataType.PRICE,
+                    "2026-08-11 15:30"
+                ),
+                DataSourceInfo(
+                    DataProvider.SAMPLE,
+                    DataType.FINANCIAL_RATIOS,
+                    "2025-12"
+                )
             ),
             dartUrl = "https://dart.fss.or.kr/dsab007/main.do?option=corp&textCrpNm=00126380"
         )

@@ -9,7 +9,7 @@ enum class MarketType {
 
 data class PriceSummary(
     val currentPrice: Long,
-    val changeRate: Double,
+    val changeRate: Double?,
     val asOf: LocalDateTime
 )
 
@@ -49,11 +49,32 @@ sealed interface SupportStatus {
     data class Unsupported(val reason: SupportReason) : SupportStatus
 }
 
+enum class DataProvider {
+    SAMPLE,
+    KIS,
+    OPEN_DART
+}
+
+enum class DataType {
+    PRICE,
+    ADJUSTED_DAILY_PRICE,
+    FINANCIAL_RATIOS,
+    INCOME_STATEMENT,
+    DISCLOSURE_LINK
+}
+
 data class DataSourceInfo(
-    val provider: String,
-    val dataType: String,
+    val provider: DataProvider,
+    val dataType: DataType,
     val asOf: String
 )
+
+enum class MissingDataSection {
+    PRICE_HISTORY,
+    FINANCIAL_RATIOS,
+    ANNUAL_FINANCIALS,
+    DART
+}
 
 data class StockAnalysis(
     val stockCode: String,
@@ -65,5 +86,6 @@ data class StockAnalysis(
     val annualFinancials: List<AnnualFinancial>,
     val support: SupportStatus,
     val sources: List<DataSourceInfo>,
-    val dartUrl: String
+    val dartUrl: String,
+    val missingData: Set<MissingDataSection> = emptySet()
 )

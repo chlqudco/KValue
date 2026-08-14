@@ -1,6 +1,20 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+}
+
+val localProperties = Properties().apply {
+    val propertiesFile = rootProject.file("local.properties")
+    if (propertiesFile.isFile) {
+        propertiesFile.inputStream().use { load(it) }
+    }
+}
+
+fun buildConfigString(value: String): String {
+    val escaped = value.replace("\\", "\\\\").replace("\"", "\\\"")
+    return "\"$escaped\""
 }
 
 android {
@@ -12,7 +26,7 @@ android {
     defaultConfig {
         applicationId = "com.chlqudco.kvalue"
         minSdk = 31
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "1.0"
 
@@ -20,8 +34,28 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField(
+                "String",
+                "KIS_APP_KEY",
+                buildConfigString(localProperties.getProperty("KIS_APP_KEY", ""))
+            )
+            buildConfigField(
+                "String",
+                "KIS_APP_SECRET",
+                buildConfigString(localProperties.getProperty("KIS_APP_SECRET", ""))
+            )
+            buildConfigField(
+                "String",
+                "OPEN_DART_API_KEY",
+                buildConfigString(localProperties.getProperty("OPEN_DART_API_KEY", ""))
+            )
+        }
         release {
             isMinifyEnabled = false
+            buildConfigField("String", "KIS_APP_KEY", "\"\"")
+            buildConfigField("String", "KIS_APP_SECRET", "\"\"")
+            buildConfigField("String", "OPEN_DART_API_KEY", "\"\"")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -33,12 +67,14 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 }
 
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
+    implementation(platform(libs.okhttp.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.ui)
@@ -49,6 +85,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.okhttp)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
