@@ -1,3 +1,8 @@
+/*
+ * 외부 DTO가 StockAnalysis로 정규화되는 규칙을 검증하는 데이터 계층 단위 테스트다.
+ * 문자열 숫자와 억원 단위 변환, 날짜 정렬·중복 제거와 최신 재무기간 선택을 확인한다.
+ * 선택 데이터 누락은 missingData로 남고 필수 현재가 누락은 전체 매핑 실패가 되는 경계도 검증한다.
+ */
 package com.chlqudco.kvalue.data.mapper
 
 import com.chlqudco.kvalue.data.remote.DartCompanyDto
@@ -7,13 +12,11 @@ import com.chlqudco.kvalue.data.remote.KisFinancialRatioDto
 import com.chlqudco.kvalue.data.remote.KisIncomeStatementDto
 import com.chlqudco.kvalue.data.remote.KisPriceDto
 import com.chlqudco.kvalue.domain.model.MissingDataSection
-import com.chlqudco.kvalue.domain.model.SupportStatus
 import java.time.LocalDate
 import java.time.LocalDateTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertSame
 import org.junit.Test
 
 class StockDataMapperTest {
@@ -39,6 +42,7 @@ class StockDataMapperTest {
                 )
             ),
             financialRatios = listOf(
+                KisFinancialRatioDto("202212", "3000", "45000", "7.0"),
                 KisFinancialRatioDto("202312", "4000", "50000", "8.0"),
                 KisFinancialRatioDto("202412", "5000", "60000", "9.5"),
                 KisFinancialRatioDto("202603", "9000", "90000", "20.0")
@@ -81,7 +85,6 @@ class StockDataMapperTest {
         assertEquals("2024-12", analysis.ratios.reportingPeriod)
         assertEquals(listOf(2022, 2023, 2024), analysis.annualFinancials.map { it.fiscalYear })
         assertEquals(350_000_000L, analysis.annualFinancials.last().revenue)
-        assertSame(SupportStatus.Supported, analysis.support)
         assertEquals(emptySet<MissingDataSection>(), analysis.missingData)
     }
 
@@ -105,6 +108,39 @@ class StockDataMapperTest {
                 MissingDataSection.DART
             ),
             analysis?.missingData
+        )
+        assertEquals(4_500.0, analysis?.ratios?.eps ?: Double.NaN, 0.0)
+        assertEquals(58_000.0, analysis?.ratios?.bps ?: Double.NaN, 0.0)
+        assertNull(analysis?.ratios?.roe)
+    }
+
+    @Test
+    fun keepsLongForecastHistoryAndLimitsChartToOneHundredPoints() {
+        val startDate = LocalDate.of(2025, 1, 1)
+        val chartPoints = (0 until 220).map { index ->
+            KisChartPointDto(
+                date = startDate.plusDays(index.toLong()).format(
+                    java.time.format.DateTimeFormatter.BASIC_ISO_DATE
+                ),
+                close = (70_000L + index).toString()
+            )
+        }
+
+        val analysis = StockDataMapper.map(
+            stockCode = "005930",
+            price = priceDto(),
+            chart = KisChartDto("삼성전자", chartPoints),
+            financialRatios = null,
+            incomeStatements = null,
+            dartCompany = null,
+            priceAsOf = LocalDateTime.of(2026, 8, 14, 15, 30)
+        )
+
+        assertEquals(100, analysis?.priceHistory?.size)
+        assertEquals(220, analysis?.forecastHistory?.size)
+        assertEquals(
+            analysis?.forecastHistory?.takeLast(100),
+            analysis?.priceHistory
         )
     }
 

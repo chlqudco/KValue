@@ -1,3 +1,9 @@
+/*
+ * K-Value의 단일 세로 스크롤 화면과 상태별 카드 배치를 정의한다.
+ * 화면은 StockUiState를 받아 렌더링하고 검색·새로고침·DART 실행 이벤트를 콜백으로 돌려준다.
+ * Repository나 계산기를 직접 참조하지 않는 상태 기반 Composable 구조라 Preview와 UI 테스트가 가능하다.
+ * testTag, contentDescription, 문자열 리소스를 사용해 자동화 테스트와 접근성을 함께 고려한다.
+ */
 package com.chlqudco.kvalue.ui
 
 import androidx.compose.foundation.clickable
@@ -41,30 +47,30 @@ import androidx.compose.ui.unit.dp
 import com.chlqudco.kvalue.R
 import com.chlqudco.kvalue.common.AppError
 import com.chlqudco.kvalue.common.NumberFormatter
+import com.chlqudco.kvalue.domain.model.HistoricalForecastResult
 import com.chlqudco.kvalue.domain.model.StockAnalysis
 import com.chlqudco.kvalue.domain.model.StockSearchSuggestion
+import com.chlqudco.kvalue.domain.model.SupportResistanceResult
 import com.chlqudco.kvalue.domain.model.MissingDataSection
 import com.chlqudco.kvalue.domain.model.DataProvider
 import com.chlqudco.kvalue.domain.model.DataType
-import com.chlqudco.kvalue.domain.model.SupportReason
-import com.chlqudco.kvalue.domain.model.SupportStatus
-import com.chlqudco.kvalue.ui.components.ComprehensiveAnalysisCard
-import com.chlqudco.kvalue.ui.components.PerReferenceCard
 import com.chlqudco.kvalue.ui.components.FinancialSummary
+import com.chlqudco.kvalue.ui.components.HistoricalForecastCard
 import com.chlqudco.kvalue.ui.components.PriceChart
-import com.chlqudco.kvalue.ui.components.SrimValueCard
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+/*
+ * 화면 최상위 Composable이다. Scaffold가 앱 바와 Snackbar 영역을 제공하고 LazyColumn이 모든 카드를 세로로 배치한다.
+ * DART 실행 실패는 일회성 UI 사건이므로 영구 화면 상태 대신 이 레벨의 Snackbar로 알린다.
+ */
 fun StockScreen(
     state: StockUiState,
     onQueryChanged: (String) -> Unit,
     onSearch: () -> Unit,
     onSuggestionSelected: (StockSearchSuggestion) -> Unit,
     onRefresh: () -> Unit,
-    onPerChanged: (PerScenario, String) -> Unit,
-    onSrimChanged: (SrimInputField, String) -> Unit,
     onOpenDart: (String) -> Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -114,6 +120,7 @@ fun StockScreen(
                     onSuggestionSelected = onSuggestionSelected
                 )
             }
+            // sealed content 상태를 when으로 모두 처리하므로 비어 있는 본문 분기가 생기지 않는다.
             item {
                 when (val content = state.content) {
                     StockContentState.Idle -> IdleCard()
@@ -121,20 +128,8 @@ fun StockScreen(
                     is StockContentState.Success -> {
                         SuccessContent(
                             analysis = content.analysis,
-                            state = state,
-                            onRefresh = onRefresh,
-                            onPerChanged = onPerChanged,
-                            onSrimChanged = onSrimChanged,
-                            onOpenDart = {
-                                if (!onOpenDart(content.analysis.dartUrl)) {
-                                    scope.launch { snackbarHostState.showSnackbar(dartError) }
-                                }
-                            }
-                        )
-                    }
-                    is StockContentState.Unsupported -> {
-                        UnsupportedContent(
-                            analysis = content.analysis,
+                            forecast = content.forecast,
+                            supportResistance = content.supportResistance,
                             onRefresh = onRefresh,
                             onOpenDart = {
                                 if (!onOpenDart(content.analysis.dartUrl)) {
@@ -154,6 +149,10 @@ fun StockScreen(
 }
 
 @Composable
+/*
+ * 검색 입력, 조회 버튼, 카탈로그 상태와 자동완성 목록을 하나의 카드로 묶는다.
+ * 340dp보다 좁으면 입력과 버튼을 세로로 바꿔 최소 터치 영역과 텍스트 폭을 확보한다.
+ */
 private fun SearchSection(
     query: String,
     queryError: QueryInputError?,
@@ -222,6 +221,7 @@ private fun SearchSection(
 }
 
 @Composable
+// 앱 시작 프리로드의 Loading·Ready·Error를 testTag가 있는 한 줄 상태로 표시한다.
 private fun StockCatalogStatus(state: StockCatalogState) {
     Row(
         modifier = Modifier
@@ -255,6 +255,10 @@ private fun StockCatalogStatus(state: StockCatalogState) {
 }
 
 @Composable
+/*
+ * 자동완성 sealed 상태에 따라 진행 표시, 결과 목록, 빈 결과 또는 오류 문구를 그린다.
+ * 각 결과 행은 회사명·종목코드를 합친 접근성 설명과 안정적인 종목코드 testTag를 갖는다.
+ */
 private fun StockSearchSuggestions(
     state: StockSuggestionState,
     onSuggestionSelected: (StockSearchSuggestion) -> Unit
@@ -336,6 +340,7 @@ private fun StockSearchSuggestions(
 }
 
 @Composable
+// IME 검색 액션도 화면의 조회 버튼과 같은 onSearch 콜백으로 연결한다.
 private fun StockCodeField(
     query: String,
     errorText: String?,
@@ -361,6 +366,7 @@ private fun StockCodeField(
 }
 
 @Composable
+// 현재 입력과 같은 종목을 이미 로딩 중이면 enabled=false가 되어 중복 조회를 막는다.
 private fun SearchButton(
     enabled: Boolean,
     onSearch: () -> Unit,
@@ -413,66 +419,23 @@ private fun LoadingCard() {
 }
 
 @Composable
+/*
+ * 정상 조회에서 가격, 차트, 통계 전망, 재무, 공시, 출처를 제품 순서대로 조립한다.
+ */
 private fun SuccessContent(
     analysis: StockAnalysis,
-    state: StockUiState,
-    onRefresh: () -> Unit,
-    onPerChanged: (PerScenario, String) -> Unit,
-    onSrimChanged: (SrimInputField, String) -> Unit,
-    onOpenDart: () -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        PriceSummaryCard(analysis, onRefresh)
-        PriceChart(analysis.priceHistory)
-        FinancialSummary(analysis.ratios, analysis.annualFinancials)
-        state.comprehensiveAnalysis?.let {
-            ComprehensiveAnalysisCard(it)
-        }
-        PerReferenceCard(
-            analysis = analysis,
-            inputs = state.perInputs,
-            result = state.perReference,
-            inputError = state.perInputError,
-            onPerChanged = onPerChanged
-        )
-        SrimValueCard(
-            analysis = analysis,
-            inputs = state.srimInputs,
-            result = state.srimValue,
-            inputError = state.srimInputError,
-            onInputChanged = onSrimChanged
-        )
-        DartButton(onOpenDart)
-        SourcesCard(analysis)
-    }
-}
-
-@Composable
-private fun UnsupportedContent(
-    analysis: StockAnalysis,
+    forecast: HistoricalForecastResult,
+    supportResistance: SupportResistanceResult,
     onRefresh: () -> Unit,
     onOpenDart: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         PriceSummaryCard(analysis, onRefresh)
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer
-            )
-        ) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.unsupported_title),
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Text(text = supportReasonText(analysis.support))
-            }
-        }
-        PriceChart(analysis.priceHistory)
+        PriceChart(
+            points = analysis.priceHistory,
+            supportResistance = supportResistance
+        )
+        HistoricalForecastCard(forecast)
         FinancialSummary(analysis.ratios, analysis.annualFinancials)
         DartButton(onOpenDart)
         SourcesCard(analysis)
@@ -480,6 +443,10 @@ private fun UnsupportedContent(
 }
 
 @Composable
+/*
+ * 가격과 등락률을 하나의 semantics 설명으로 병합해 스크린 리더가 관련 정보를 연속해서 읽게 한다.
+ * 폭이 좁으면 현재가와 새로고침 버튼을 세로로 배치하고 등락은 부호·문구·색을 함께 사용한다.
+ */
 private fun PriceSummaryCard(
     analysis: StockAnalysis,
     onRefresh: () -> Unit
@@ -589,6 +556,7 @@ private fun DartButton(onOpenDart: () -> Unit) {
 }
 
 @Composable
+// 도메인에 보존된 출처 목록과 누락 섹션을 사용자 문구로 변환하고 샘플 데이터 여부도 별도 고지한다.
 private fun SourcesCard(analysis: StockAnalysis) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -665,6 +633,7 @@ private fun dataTypeText(dataType: DataType): String = when (dataType) {
 }
 
 @Composable
+// AppError 종류를 안정적인 문자열 리소스로 바꾸고 동일 종목을 다시 요청하는 버튼을 제공한다.
 private fun ErrorCard(error: AppError, onRetry: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -701,23 +670,5 @@ private fun errorText(error: AppError): String = when (error) {
     AppError.RateLimited -> stringResource(R.string.error_rate_limited)
     AppError.ServiceUnavailable -> stringResource(R.string.error_service)
     is AppError.PartialData -> stringResource(R.string.error_partial)
-    is AppError.UnsupportedStock -> supportReasonText(
-        SupportStatus.Unsupported(error.reason)
-    )
     AppError.Unknown -> stringResource(R.string.error_unknown)
-}
-
-@Composable
-private fun supportReasonText(status: SupportStatus): String {
-    val reason = (status as? SupportStatus.Unsupported)?.reason
-        ?: return stringResource(R.string.unsupported_unknown)
-    return when (reason) {
-        SupportReason.NON_POSITIVE_EPS -> stringResource(R.string.unsupported_non_positive_eps)
-        SupportReason.ETF_OR_ETN -> stringResource(R.string.unsupported_etf)
-        SupportReason.PREFERRED_STOCK -> stringResource(R.string.unsupported_preferred)
-        SupportReason.SPAC -> stringResource(R.string.unsupported_spac)
-        SupportReason.REIT -> stringResource(R.string.unsupported_reit)
-        SupportReason.FINANCIAL_COMPANY -> stringResource(R.string.unsupported_financial)
-        SupportReason.UNKNOWN_TYPE -> stringResource(R.string.unsupported_unknown)
-    }
 }

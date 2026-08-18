@@ -1,3 +1,8 @@
+/*
+ * 종목 자동완성 후보의 검색·정렬 규칙을 검증한다.
+ * 정확 일치, 접두사, 포함 검색 순위와 종목코드 접두사 검색을 실제 후보 목록으로 확인한다.
+ * 공백·대소문자 정규화, 결과 개수 제한, 빈 검색어 처리도 함께 고정한다.
+ */
 package com.chlqudco.kvalue.domain
 
 import com.chlqudco.kvalue.domain.model.StockSearchSuggestion

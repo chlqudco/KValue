@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
+    <!-- Android 12 이상의 클라우드 백업에서 앱의 모든 내부·외부 저장 영역을 제외한다. -->
     <cloud-backup>
         <exclude domain="root" path="." />
         <exclude domain="file" path="." />
@@ -7,6 +8,7 @@
         <exclude domain="sharedpref" path="." />
         <exclude domain="external" path="." />
     </cloud-backup>
+    <!-- 새 기기로 직접 이전할 때도 같은 데이터가 복사되지 않도록 별도로 차단한다. -->
     <device-transfer>
         <exclude domain="root" path="." />
         <exclude domain="file" path="." />

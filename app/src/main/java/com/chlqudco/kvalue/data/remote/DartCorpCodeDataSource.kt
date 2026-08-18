@@ -1,3 +1,9 @@
+/*
+ * OpenDART 고유번호 ZIP을 내려받아 상장 종목 검색과 종목별 DART 연결 정보를 제공한다.
+ * 원본 ZIP은 7일간 앱 캐시에 보존하고, 상장사만 추린 TSV 인덱스를 만들어 다음 실행의 파싱 비용을 줄인다.
+ * Mutex로 동시 초기화를 한 번만 수행하며 새 다운로드가 실패하면 사용 가능한 이전 캐시를 재사용한다.
+ * 네트워크·HTTP·OpenDART 상태 코드는 AppError로 정규화하고 코루틴 취소는 끝까지 전파한다.
+ */
 package com.chlqudco.kvalue.data.remote
 
 import android.util.Xml
@@ -48,6 +54,7 @@ internal class DartCorpCodeDataSource(
     @Volatile
     private var companies: Map<String, DartCompanyDto>? = null
 
+    // 이미 준비된 상장사 Map에서 6자리 종목코드를 키로 회사 정보를 찾는다.
     suspend fun findCompany(stockCode: String): DartCompanyDto? = traced(
         operation = "corp_code_lookup",
         stockCode = stockCode,
@@ -64,6 +71,7 @@ internal class DartCorpCodeDataSource(
         }
     }
 
+    // 공통 StockSearchMatcher로 순위를 계산한 뒤 다시 DART 회사 DTO에 연결한다.
     suspend fun searchCompanies(query: String, limit: Int): List<DartCompanyDto> = traced(
         operation = "corp_code_search",
         stockCode = null,
@@ -80,8 +88,13 @@ internal class DartCorpCodeDataSource(
         matches.mapNotNull { companiesByCode[it.stockCode] }
     }
 
+    // 앱 시작 프리로드는 전체 목록을 메모리에 올리고 준비된 상장사 개수만 반환한다.
     suspend fun preloadCompanies(): Int = loadCompanies().size
 
+    /*
+     * 프로세스 메모리, 디스크 인덱스, ZIP 파싱 순으로 가장 비용이 낮은 경로를 먼저 선택한다.
+     * Mutex 덕분에 프리로드와 사용자 검색이 동시에 시작돼도 다운로드·파싱은 한 번만 수행된다.
+     */
     private suspend fun loadCompanies(): Map<String, DartCompanyDto> = loadMutex.withLock {
         companies?.let {
             AppLogger.cacheHit("OpenDART", "corp_code_list", "memory")
@@ -112,6 +125,10 @@ internal class DartCorpCodeDataSource(
         }
     }
 
+    /*
+     * 7일 이내 ZIP은 바로 사용하고 만료됐으면 새 원본을 임시 파일에 쓴 후 최종 파일로 교체한다.
+     * 갱신 실패 시 기존 파일이 있으면 stale 캐시로 폴백해 종목 검색 기능을 유지한다.
+     */
     private suspend fun resolveSourceFile(): File {
         val cacheFile = File(cacheDirectory, CACHE_FILE_NAME)
         val now = System.currentTimeMillis()
@@ -139,6 +156,7 @@ internal class DartCorpCodeDataSource(
         }
     }
 
+    // 응답 본문이 실제 ZIP 서명을 갖는지 확인하고 XML 오류 본문이면 OpenDART 상태 코드를 AppError로 바꾼다.
     private suspend fun downloadCorpCodes(): ByteArray = traced(
         operation = "corp_code_download",
         stockCode = null
@@ -200,6 +218,10 @@ internal class DartCorpCodeDataSource(
         }
     }
 
+    /*
+     * ZIP 스트림 안의 XML을 전체 DOM으로 올리지 않고 PullParser로 한 항목씩 읽어 메모리 사용을 제한한다.
+     * stock_code가 정확한 숫자 6자리인 상장사만 Map에 넣어 비상장 법인은 자동완성에서 제외한다.
+     */
     private fun parseCompanies(file: File): Map<String, DartCompanyDto> {
         val result = mutableMapOf<String, DartCompanyDto>()
         ZipInputStream(BufferedInputStream(file.inputStream())).use { zipStream ->
@@ -244,6 +266,7 @@ internal class DartCorpCodeDataSource(
         return result
     }
 
+    // 원본 ZIP보다 최신인 TSV만 신뢰하고 각 행의 네 필드와 종목코드 형식을 다시 검증한다.
     private fun readCompanyIndex(
         indexFile: File,
         sourceFile: File
@@ -269,6 +292,7 @@ internal class DartCorpCodeDataSource(
         return result
     }
 
+    // 정렬된 경량 인덱스를 임시 파일에 완성한 뒤 교체해 중간 쓰기 실패로 기존 파일이 깨지는 위험을 줄인다.
     private fun writeCompanyIndex(
         indexFile: File,
         values: Map<String, DartCompanyDto>
@@ -293,6 +317,7 @@ internal class DartCorpCodeDataSource(
         }
     }
 
+    // OkHttp의 비동기 바이트 응답을 취소 가능한 suspend 함수로 변환한다.
     private suspend fun Call.awaitBytes(): RawByteResponse =
         suspendCancellableCoroutine { continuation ->
             continuation.invokeOnCancellation { cancel() }

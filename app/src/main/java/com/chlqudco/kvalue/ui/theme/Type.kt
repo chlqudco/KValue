@@ -1,3 +1,8 @@
+/*
+ * Material 3의 제목·본문·라벨 역할별 글꼴 크기, 굵기와 행간을 정의한다.
+ * Compose 컴포넌트는 개별 TextStyle을 만들기보다 MaterialTheme.typography의 의미 토큰을 사용한다.
+ * sp 단위를 사용하므로 Android의 사용자 글자 크기 접근성 설정이 자연스럽게 반영된다.
+ */
 package com.chlqudco.kvalue.ui.theme
 
 import androidx.compose.material3.Typography

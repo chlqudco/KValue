@@ -1,30 +1,26 @@
+/*
+ * 사용자 입력, 자동완성, 종목 조회를 조정하는 화면 상태 관리자다.
+ * Repository 결과를 단일 StateFlow<StockUiState>로 외부에 제공한다.
+ * Job 취소와 증가하는 요청 ID를 함께 사용해 느리게 도착한 이전 응답이 최신 화면을 덮지 못하게 한다.
+ */
 package com.chlqudco.kvalue.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.chlqudco.kvalue.common.AppError
-import com.chlqudco.kvalue.common.AppLogger
 import com.chlqudco.kvalue.common.StockCodeValidation
 import com.chlqudco.kvalue.common.StockCodeValidator
 import com.chlqudco.kvalue.data.StockAnalysisResult
 import com.chlqudco.kvalue.data.StockCatalogResult
 import com.chlqudco.kvalue.data.StockRepository
 import com.chlqudco.kvalue.data.StockSearchResult
-import com.chlqudco.kvalue.domain.ComprehensiveAnalysisCalculator
-import com.chlqudco.kvalue.domain.PerReferenceCalculator
-import com.chlqudco.kvalue.domain.PerAssumptionsValidator
-import com.chlqudco.kvalue.domain.PerValidationResult
-import com.chlqudco.kvalue.domain.SrimValueCalculator
+import com.chlqudco.kvalue.domain.HistoricalForecastCalculator
 import com.chlqudco.kvalue.domain.StockSearchMatcher
-import com.chlqudco.kvalue.domain.model.PerAssumptions
-import com.chlqudco.kvalue.domain.model.SrimAssumptions
-import com.chlqudco.kvalue.domain.model.StockAnalysis
+import com.chlqudco.kvalue.domain.SupportResistanceCalculator
 import com.chlqudco.kvalue.domain.model.StockSearchSuggestion
-import com.chlqudco.kvalue.domain.model.SupportReason
-import com.chlqudco.kvalue.domain.model.SupportStatus
-import java.math.BigDecimal
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,18 +28,22 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class StockViewModel(
     private val repository: StockRepository
 ) : ViewModel() {
+    // MutableStateFlow는 ViewModel 내부에서만 수정하고, 화면에는 읽기 전용 StateFlow만 노출한다.
     private val _uiState = MutableStateFlow(StockUiState())
     val uiState: StateFlow<StockUiState> = _uiState.asStateFlow()
 
+    // Job은 실제 코루틴을 취소하고, 요청 ID는 취소 직전에 이미 도착한 오래된 결과까지 걸러내는 이중 안전장치다.
     private var searchJob: Job? = null
     private var suggestionJob: Job? = null
     private var latestRequestId = 0L
     private var latestSuggestionRequestId = 0L
 
+    // 화면이 만들어지면 검색 전에 OpenDART 상장 종목 목록을 백그라운드에서 준비한다.
     init {
         viewModelScope.launch {
             val result = try {
@@ -66,6 +66,10 @@ class StockViewModel(
         }
     }
 
+    /*
+     * 글자가 바뀔 때마다 이전 자동완성 작업을 취소하고 250ms 뒤 새 검색을 실행한다.
+     * 사용자가 계속 입력하는 동안은 네트워크·캐시 검색을 반복하지 않고 마지막 문자열만 처리한다.
+     */
     fun onQueryChanged(value: String) {
         suggestionJob?.cancel()
         val requestId = ++latestSuggestionRequestId
@@ -91,6 +95,10 @@ class StockViewModel(
         }
     }
 
+    /*
+     * 조회 버튼 이벤트다. 6자리 숫자는 즉시 조회하고 이름은 현재 후보의 정확 일치 또는 추가 검색으로 해석한다.
+     * 이름을 임의의 첫 후보로 선택하지 않아 비슷한 회사명의 잘못된 종목 조회를 막는다.
+     */
     fun search() {
         val query = _uiState.value.query.trim()
         when (val validation = StockCodeValidator.validate(query)) {
@@ -119,6 +127,7 @@ class StockViewModel(
         }
     }
 
+    // 사용자가 자동완성 행을 직접 선택했으므로 회사명과 연결된 정확한 종목코드로 조회한다.
     fun onSuggestionSelected(suggestion: StockSearchSuggestion) {
         suggestionJob?.cancel()
         latestSuggestionRequestId++
@@ -129,11 +138,11 @@ class StockViewModel(
         )
     }
 
+    // 현재 성공·오류 상태의 종목코드를 재사용하고 forceRefresh로 Repository 캐시를 우회한다.
     fun refresh() {
         val content = _uiState.value.content
         val stockCode = when (content) {
             is StockContentState.Success -> content.analysis.stockCode
-            is StockContentState.Unsupported -> content.analysis.stockCode
             is StockContentState.Error -> content.stockCode
             else -> return
         }
@@ -144,129 +153,10 @@ class StockViewModel(
         )
     }
 
-    fun onPerChanged(scenario: PerScenario, value: String) {
-        val current = _uiState.value
-        val content = current.content as? StockContentState.Success ?: return
-        val inputs = when (scenario) {
-            PerScenario.CONSERVATIVE -> current.perInputs.copy(conservative = value)
-            PerScenario.BASE -> current.perInputs.copy(base = value)
-            PerScenario.OPTIMISTIC -> current.perInputs.copy(optimistic = value)
-        }
-        when (
-            val validation = PerAssumptionsValidator.validate(
-                inputs.conservative,
-                inputs.base,
-                inputs.optimistic
-            )
-        ) {
-            PerValidationResult.InvalidValue -> {
-                AppLogger.referenceValueInputRejected("per", "value")
-                _uiState.update {
-                    it.copy(perInputs = inputs, perInputError = PerInputError.INVALID_VALUE)
-                }
-            }
-            PerValidationResult.InvalidOrder -> {
-                AppLogger.referenceValueInputRejected("per", "order")
-                _uiState.update {
-                    it.copy(perInputs = inputs, perInputError = PerInputError.INVALID_ORDER)
-                }
-            }
-            is PerValidationResult.Valid -> {
-                val eps = content.analysis.ratios.eps ?: return
-                val perReference = PerReferenceCalculator.calculate(
-                    eps = eps,
-                    assumptions = validation.assumptions,
-                    currentPrice = content.analysis.price.currentPrice
-                ) ?: return
-                AppLogger.referenceValueCalculated(
-                    stockCode = content.analysis.stockCode,
-                    model = "per",
-                    available = true
-                )
-                val comprehensiveAnalysis = ComprehensiveAnalysisCalculator.calculate(
-                    analysis = content.analysis,
-                    perReference = perReference,
-                    srimReference = current.srimValue
-                )
-                AppLogger.comprehensiveAnalysisCalculated(
-                    stockCode = content.analysis.stockCode,
-                    result = comprehensiveAnalysis
-                )
-                _uiState.update {
-                    it.copy(
-                        perInputs = inputs,
-                        perInputError = null,
-                        perReference = perReference,
-                        comprehensiveAnalysis = comprehensiveAnalysis
-                    )
-                }
-            }
-        }
-    }
-
-    fun onSrimChanged(field: SrimInputField, value: String) {
-        val current = _uiState.value
-        val content = current.content as? StockContentState.Success ?: return
-        val inputs = when (field) {
-            SrimInputField.RETURN_ON_EQUITY -> {
-                current.srimInputs.copy(returnOnEquity = value)
-            }
-            SrimInputField.REQUIRED_RETURN -> {
-                current.srimInputs.copy(requiredReturn = value)
-            }
-        }
-        val roe = inputs.returnOnEquity.toPositiveFiniteDouble()
-        if (roe == null) {
-            AppLogger.referenceValueInputRejected("srim", "roe")
-            _uiState.update {
-                it.copy(
-                    srimInputs = inputs,
-                    srimInputError = SrimInputError.INVALID_ROE
-                )
-            }
-            return
-        }
-        val requiredReturn = inputs.requiredReturn.toPositiveFiniteDouble()
-        if (requiredReturn == null || requiredReturn > 100.0) {
-            AppLogger.referenceValueInputRejected("srim", "required_return")
-            _uiState.update {
-                it.copy(
-                    srimInputs = inputs,
-                    srimInputError = SrimInputError.INVALID_REQUIRED_RETURN
-                )
-            }
-            return
-        }
-        val bps = content.analysis.ratios.bps ?: return
-        val result = SrimValueCalculator.calculate(
-            bps = bps,
-            assumptions = SrimAssumptions(roe, requiredReturn),
-            currentPrice = content.analysis.price.currentPrice
-        ) ?: return
-        AppLogger.referenceValueCalculated(
-            stockCode = content.analysis.stockCode,
-            model = "srim",
-            available = true
-        )
-        val comprehensiveAnalysis = ComprehensiveAnalysisCalculator.calculate(
-            analysis = content.analysis,
-            perReference = current.perReference,
-            srimReference = result
-        )
-        AppLogger.comprehensiveAnalysisCalculated(
-            stockCode = content.analysis.stockCode,
-            result = comprehensiveAnalysis
-        )
-        _uiState.update {
-            it.copy(
-                srimInputs = inputs,
-                srimInputError = null,
-                srimValue = result,
-                comprehensiveAnalysis = comprehensiveAnalysis
-            )
-        }
-    }
-
+    /*
+     * 모든 조회 진입점이 공유하는 핵심 상태 전환이다.
+     * 동일 종목 로딩 중복을 막고 이전 Job을 취소한 뒤 입력·계산 결과를 초기화하고 Loading을 먼저 발행한다.
+     */
     private fun startSearch(
         stockCode: String,
         submittedQuery: String,
@@ -290,14 +180,7 @@ class StockViewModel(
                 query = submittedQuery,
                 queryError = null,
                 suggestions = StockSuggestionState.Hidden,
-                content = StockContentState.Loading(stockCode, submittedQuery),
-                perInputs = PerInputFields(),
-                perInputError = null,
-                perReference = null,
-                srimInputs = SrimInputFields(),
-                srimInputError = null,
-                srimValue = null,
-                comprehensiveAnalysis = null
+                content = StockContentState.Loading(stockCode, submittedQuery)
             )
         }
         searchJob = viewModelScope.launch {
@@ -308,6 +191,7 @@ class StockViewModel(
             } catch (_: Exception) {
                 StockAnalysisResult.Failure(AppError.Unknown)
             }
+            // 취소 여부와 별개로 최신 요청 번호가 아니면 응답을 폐기한다.
             if (requestId != latestRequestId) return@launch
             when (result) {
                 is StockAnalysisResult.Failure -> {
@@ -320,70 +204,35 @@ class StockViewModel(
         }
     }
 
-    private fun applyAnalysis(result: StockAnalysisResult.Success) {
-        val analysis = result.analysis
-        val assumptions = PerAssumptions()
-        val perReference = analysis.ratios.eps?.let {
-            PerReferenceCalculator.calculate(
-                eps = it,
-                assumptions = assumptions,
-                currentPrice = analysis.price.currentPrice
-            )
-        }
-        val srimInputs = SrimInputFields(
-            returnOnEquity = analysis.ratios.roe?.toInputValue().orEmpty()
-        )
-        val srimValue = calculateSrim(analysis, srimInputs)
-        AppLogger.referenceValueCalculated(
-            stockCode = analysis.stockCode,
-            model = "per",
-            available = perReference != null
-        )
-        AppLogger.referenceValueCalculated(
-            stockCode = analysis.stockCode,
-            model = "srim",
-            available = srimValue != null
-        )
-        val content = when {
-            analysis.support is SupportStatus.Unsupported -> {
-                StockContentState.Unsupported(analysis)
-            }
-            analysis.ratios.eps != null && analysis.ratios.eps <= 0.0 -> {
-                StockContentState.Unsupported(
-                    analysis.copy(
-                        support = SupportStatus.Unsupported(SupportReason.NON_POSITIVE_EPS)
-                    )
+    // Repository 성공 결과를 한 번의 update로 발행한다.
+    private suspend fun applyAnalysis(result: StockAnalysisResult.Success) {
+        val calculations = withContext(Dispatchers.Default) {
+            Pair(
+                HistoricalForecastCalculator.calculate(
+                    history = result.analysis.forecastHistory,
+                    currentPrice = result.analysis.price.currentPrice
+                ),
+                SupportResistanceCalculator.calculate(
+                    priceHistory = result.analysis.priceHistory,
+                    currentPrice = result.analysis.price.currentPrice
                 )
-            }
-            else -> StockContentState.Success(analysis)
-        }
-        val comprehensiveAnalysis = if (content is StockContentState.Success) {
-            ComprehensiveAnalysisCalculator.calculate(
-                analysis = analysis,
-                perReference = perReference,
-                srimReference = srimValue
-            )
-        } else {
-            null
-        }
-        comprehensiveAnalysis?.let {
-            AppLogger.comprehensiveAnalysisCalculated(
-                stockCode = analysis.stockCode,
-                result = it
             )
         }
         _uiState.update {
             it.copy(
-                content = content,
-                perReference = perReference.takeIf { content is StockContentState.Success },
-                srimInputs = srimInputs,
-                srimInputError = null,
-                srimValue = srimValue.takeIf { content is StockContentState.Success },
-                comprehensiveAnalysis = comprehensiveAnalysis
+                content = StockContentState.Success(
+                    analysis = result.analysis,
+                    forecast = calculations.first,
+                    supportResistance = calculations.second
+                )
             )
         }
     }
 
+    /*
+     * 입력한 회사명을 최신 종목 카탈로그에서 다시 찾는다.
+     * 정확히 하나의 이름 일치가 없으면 사용자가 추천 목록에서 명시적으로 고르도록 오류 상태를 남긴다.
+     */
     private fun resolveNameAndSearch(query: String) {
         if (query.isEmpty()) {
             _uiState.update { it.copy(queryError = QueryInputError.EMPTY) }
@@ -422,6 +271,7 @@ class StockViewModel(
         }
     }
 
+    // Repository 구현이 예외를 던져도 ViewModel 바깥으로 전파하지 않되 코루틴 취소만은 보존한다.
     private suspend fun loadSuggestions(query: String): StockSearchResult = try {
         repository.searchStocks(query, SUGGESTION_LIMIT)
     } catch (cancellation: CancellationException) {
@@ -453,31 +303,11 @@ class StockViewModel(
             ?.suggestions
             .orEmpty()
 
-    private fun calculateSrim(
-        analysis: StockAnalysis,
-        inputs: SrimInputFields
-    ) = analysis.ratios.bps?.let { bps ->
-        val roe = inputs.returnOnEquity.toPositiveFiniteDouble() ?: return@let null
-        val requiredReturn = inputs.requiredReturn.toPositiveFiniteDouble() ?: return@let null
-        SrimValueCalculator.calculate(
-            bps = bps,
-            assumptions = SrimAssumptions(roe, requiredReturn),
-            currentPrice = analysis.price.currentPrice
-        )
-    }
-
-    private fun String.toPositiveFiniteDouble(): Double? = trim()
-        .replace(",", "")
-        .toDoubleOrNull()
-        ?.takeIf { it.isFinite() && it > 0.0 }
-
-    private fun Double.toInputValue(): String? = takeIf { isFinite() && this > 0.0 }
-        ?.let { BigDecimal.valueOf(it).stripTrailingZeros().toPlainString() }
-
     companion object {
         private const val SUGGESTION_LIMIT = 8
         private const val SUGGESTION_DEBOUNCE_MILLIS = 250L
 
+        // 기본 생성자가 아닌 Repository를 주입하면서 Android ViewModel 생성 규약을 만족시키는 팩토리다.
         fun factory(repository: StockRepository): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")

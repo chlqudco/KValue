@@ -1,3 +1,9 @@
+/*
+ * 도메인 모델의 원본 숫자를 한국 사용자에게 보여줄 문자열로 변환한다.
+ * 계산 로직은 숫자 타입을 유지하고 UI 경계에서만 이 포매터를 사용하도록 책임을 분리한다.
+ * 원화, 배수, 백분율, 기준시각과 큰 금액의 조·억 단위 표현을 동일한 규칙으로 제공한다.
+ * NumberFormat에 Locale.KOREA를 지정해 천 단위 구분과 소수점 표현이 기기 언어에 흔들리지 않게 한다.
+ */
 package com.chlqudco.kvalue.common
 
 import java.text.NumberFormat
@@ -31,6 +37,7 @@ object NumberFormatter {
 
     fun dateTime(value: LocalDateTime): String = value.format(dateTimeFormatter)
 
+    // 큰 실적 금액을 조와 억으로 나누되 부호를 절댓값 계산과 분리해 Long 원본 의미를 유지한다.
     fun compactWon(value: Long): String {
         val sign = if (value < 0L) "-" else ""
         val absolute = abs(value)
@@ -50,6 +57,7 @@ object NumberFormatter {
     private fun integer(value: Long): String =
         NumberFormat.getIntegerInstance(Locale.KOREA).format(value)
 
+    // 배수와 백분율은 일관되게 소수 둘째 자리까지 표시한다.
     private fun decimal(value: Double): String {
         val formatter = NumberFormat.getNumberInstance(Locale.KOREA)
         formatter.minimumFractionDigits = 2

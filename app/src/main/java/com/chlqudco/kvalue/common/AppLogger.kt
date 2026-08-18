@@ -1,9 +1,14 @@
+/*
+ * 외부 API 호출과 분석 흐름을 구조화된 한 줄 로그로 남기는 진단 도구다.
+ * 시작 시각을 LogTrace에 보관했다가 성공·실패·취소 시 지연시간과 오류 범주를 기록한다.
+ * 키, 토큰, 사용자 입력 원문, API 응답 본문은 받지 않으며 값도 허용 문자와 최대 길이로 제한한다.
+ * release 빌드에서는 emit가 즉시 반환하므로 현재 구현의 진단 로그는 debug 빌드에만 출력된다.
+ */
 package com.chlqudco.kvalue.common
 
 import android.os.SystemClock
 import android.util.Log
 import com.chlqudco.kvalue.BuildConfig
-import com.chlqudco.kvalue.domain.model.ComprehensiveAnalysisResult
 
 internal data class LogTrace(
     val provider: String,
@@ -137,7 +142,6 @@ internal object AppLogger {
     fun analysisSucceeded(
         stockCode: String,
         missingSectionCount: Int,
-        supported: Boolean,
         startedAtMillis: Long
     ) {
         emit(
@@ -146,8 +150,7 @@ internal object AppLogger {
             fields = listOf(
                 "stock" to stockCode,
                 "duration_ms" to elapsedSince(startedAtMillis),
-                "missing_sections" to missingSectionCount,
-                "supported" to supported
+                "missing_sections" to missingSectionCount
             )
         )
     }
@@ -175,56 +178,16 @@ internal object AppLogger {
         )
     }
 
-    fun referenceValueCalculated(
-        stockCode: String,
-        model: String,
-        available: Boolean
-    ) {
-        emit(
-            priority = Log.DEBUG,
-            event = "reference_value_calculated",
-            fields = listOf(
-                "stock" to stockCode,
-                "model" to model,
-                "available" to available
-            )
-        )
-    }
-
-    fun referenceValueInputRejected(model: String, field: String) {
-        emit(
-            priority = Log.DEBUG,
-            event = "reference_value_input_rejected",
-            fields = listOf(
-                "model" to model,
-                "field" to field
-            )
-        )
-    }
-
-    fun comprehensiveAnalysisCalculated(
-        stockCode: String,
-        result: ComprehensiveAnalysisResult
-    ) {
-        emit(
-            priority = Log.DEBUG,
-            event = "comprehensive_analysis_calculated",
-            fields = listOf(
-                "stock" to stockCode,
-                "reference_methods" to result.reference?.methods?.size,
-                "technical_available" to (result.technical != null),
-                "view" to result.view.name.lowercase(),
-                "score" to result.score
-            )
-        )
-    }
-
     private fun duration(trace: LogTrace): Long =
         elapsedSince(trace.startedAtMillis)
 
     private fun elapsedSince(startedAtMillis: Long): Long =
         (SystemClock.elapsedRealtime() - startedAtMillis).coerceAtLeast(0L)
 
+    /*
+     * release에서는 즉시 종료하고 debug에서만 key=value 형식의 한 줄 로그를 만든다.
+     * safeValue가 공백·개행·특수문자를 치환하고 64자로 잘라 로그 주입과 과도한 원문 노출을 줄인다.
+     */
     private fun emit(
         priority: Int,
         event: String,
@@ -258,7 +221,6 @@ internal object AppLogger {
         AppError.RateLimited -> "rate_limited"
         AppError.ServiceUnavailable -> "service_unavailable"
         is AppError.PartialData -> "partial_data"
-        is AppError.UnsupportedStock -> "unsupported_stock"
         AppError.Unknown -> "unknown"
     }
 

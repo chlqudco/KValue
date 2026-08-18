@@ -1,3 +1,9 @@
+/*
+ * 핵심 재무비율과 최근 연도별 실적을 카드 형태로 렌더링하는 UI 컴포넌트 모음이다.
+ * 도메인 숫자는 NumberFormatter를 통해 원·배·퍼센트·조/억 단위의 사용자 문자열로 바꾼다.
+ * 값이 없는 항목은 0으로 보정하지 않고 공통 데이터 없음 문구를 표시한다.
+ * FlowRow와 반응형 폭을 사용해 좁은 화면이나 글자 확대에서도 지표가 잘리지 않게 배치한다.
+ */
 package com.chlqudco.kvalue.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +28,7 @@ import com.chlqudco.kvalue.common.NumberFormatter
 import com.chlqudco.kvalue.domain.model.AnnualFinancial
 import com.chlqudco.kvalue.domain.model.FinancialRatios
 
+// 핵심 비율 카드와 연도별 실적 카드를 순서대로 묶는 공개 진입점이다.
 @Composable
 fun FinancialSummary(
     ratios: FinancialRatios,
@@ -37,6 +44,7 @@ fun FinancialSummary(
     }
 }
 
+// FlowRow는 가용 폭이 줄면 지표 항목을 다음 줄로 넘겨 고정 열 레이아웃의 잘림을 피한다.
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 private fun RatioCard(ratios: FinancialRatios) {
@@ -111,6 +119,7 @@ private fun RatioItem(
     }
 }
 
+// 연도별 원본 Long을 조·억 단위로 포맷하고 값이 없으면 데이터 없음 문구를 사용한다.
 @Composable
 private fun AnnualFinancialCard(annualFinancials: List<AnnualFinancial>) {
     val missing = stringResource(R.string.data_missing)

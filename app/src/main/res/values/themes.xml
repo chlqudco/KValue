@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+    <!-- 시스템 ActionBar 없이 Compose가 화면 전체와 Material 3 테마를 직접 그리도록 하는 Activity 기반 테마다. -->
     <style name="Theme.KValue" parent="android:Theme.Material.Light.NoActionBar" />
 </resources>

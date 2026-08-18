@@ -1,3 +1,9 @@
+/*
+ * API 키와 네트워크 없이 전체 화면을 실행하기 위한 StockRepository 구현과 고정 샘플 데이터다.
+ * 검색 가능한 종목은 삼성전자 한 개이며 조회 지연과 메모리 캐시를 넣어 실제 로딩 흐름도 재현한다.
+ * 장기 OHLCV와 최근 100거래일 차트, 재무비율, 3개 연도 실적을 제공해 전체 조회 화면을 확인할 수 있다.
+ * 샘플 값은 투자 데이터가 아니라 개발·테스트용이므로 실제 데이터와 명확히 구분해 표시된다.
+ */
 package com.chlqudco.kvalue.data
 
 import com.chlqudco.kvalue.common.AppError
@@ -13,7 +19,6 @@ import com.chlqudco.kvalue.domain.model.PriceSummary
 import com.chlqudco.kvalue.domain.model.StockAnalysis
 import com.chlqudco.kvalue.domain.StockSearchMatcher
 import com.chlqudco.kvalue.domain.model.StockSearchSuggestion
-import com.chlqudco.kvalue.domain.model.SupportStatus
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -28,6 +33,7 @@ class SampleStockRepository : StockRepository {
         stockCode: String,
         forceRefresh: Boolean
     ): StockAnalysisResult {
+        // forceRefresh가 아니면 실제 Repository와 같은 방식으로 메모리 결과를 재사용한다.
         val startedAtMillis = AppLogger.analysisStarted(stockCode, forceRefresh)
         if (!forceRefresh) {
             cache[stockCode]?.let {
@@ -35,7 +41,6 @@ class SampleStockRepository : StockRepository {
                 AppLogger.analysisSucceeded(
                     stockCode = stockCode,
                     missingSectionCount = it.missingData.size,
-                    supported = true,
                     startedAtMillis = startedAtMillis
                 )
                 return StockAnalysisResult.Success(it)
@@ -51,7 +56,6 @@ class SampleStockRepository : StockRepository {
         AppLogger.analysisSucceeded(
             stockCode = stockCode,
             missingSectionCount = analysis.missingData.size,
-            supported = true,
             startedAtMillis = startedAtMillis
         )
         return StockAnalysisResult.Success(analysis)
@@ -79,14 +83,18 @@ class SampleStockRepository : StockRepository {
 
 object SampleStockData {
     fun samsungElectronics(): StockAnalysis {
+        // 주말을 제외한 장기 날짜에 완만한 추세와 사인파 변동을 더해 전망 검증용 시계열을 만든다.
         val tradingDays = generateSequence(LocalDate.of(2026, 8, 11)) { it.minusDays(1) }
             .filter { it.dayOfWeek != DayOfWeek.SATURDAY && it.dayOfWeek != DayOfWeek.SUNDAY }
-            .take(100)
+            .take(640)
             .toList()
             .sorted()
-        val history = tradingDays.mapIndexed { index, date ->
-            val trend = 68_000L + index * 145L
-            val wave = (sin(index / 5.2) * 3_100.0).roundToLong()
+        val rawHistory = tradingDays.mapIndexed { index, date ->
+            val trend = 53_500L + index * 45L
+            val wave = (
+                sin(index / 9.0) * 1_400.0 +
+                    sin(index / 33.0) * 900.0
+                ).roundToLong()
             val close = trend + wave
             val open = close + ((index % 7) - 3) * 120L
             PricePoint(
@@ -97,7 +105,17 @@ object SampleStockData {
                 low = minOf(open, close) - 620L - index % 3 * 70L,
                 volume = 8_000_000L + index % 11 * 620_000L
             )
+        }
+        val adjustment = 82_300L - rawHistory.last().close
+        val history = rawHistory.map { point ->
+            point.copy(
+                close = point.close + adjustment,
+                open = point.open?.plus(adjustment),
+                high = point.high?.plus(adjustment),
+                low = point.low?.plus(adjustment)
+            )
         }.toMutableList()
+        // 마지막 행은 상단 가격 카드의 현재가와 같은 종가·거래량으로 맞춘다.
         history[history.lastIndex] = history.last().copy(
             close = 82_300L,
             open = 81_700L,
@@ -115,7 +133,8 @@ object SampleStockData {
                 changeRate = 1.23,
                 asOf = LocalDateTime.of(2026, 8, 11, 15, 30)
             ),
-            priceHistory = history,
+            priceHistory = history.takeLast(100),
+            forecastHistory = history,
             ratios = FinancialRatios(
                 eps = 5_800.0,
                 per = 14.2,
@@ -144,7 +163,6 @@ object SampleStockData {
                     netIncome = 31_200_000_000_000L
                 )
             ),
-            support = SupportStatus.Supported,
             sources = listOf(
                 DataSourceInfo(
                     DataProvider.SAMPLE,

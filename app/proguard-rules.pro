@@ -1,3 +1,5 @@
+# 앱 전용 R8/ProGuard 축소·난독화 예외를 두는 파일이다.
+# 현재 release 빌드는 minify를 비활성화해 활성 규칙이 없으며 아래 내용은 Android 기본 안내 예시다.
 # Add project specific ProGuard rules here.
 # You can control the set of applied configuration files using the
 # proguardFiles setting in build.gradle.
