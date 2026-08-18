@@ -1,16 +1,16 @@
 package com.chlqudco.kvalue.domain
 
-import com.chlqudco.kvalue.domain.model.FairValueBand
+import com.chlqudco.kvalue.domain.model.PerReferenceBand
 import com.chlqudco.kvalue.domain.model.PerAssumptions
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-class FairValueCalculatorTest {
+class PerReferenceCalculatorTest {
     @Test
     fun calculatesThreeScenariosAndGap() {
-        val result = FairValueCalculator.calculate(
+        val result = PerReferenceCalculator.calculate(
             eps = 5_800.0,
             assumptions = PerAssumptions(10.0, 15.0, 20.0),
             currentPrice = 82_300L
@@ -22,12 +22,12 @@ class FairValueCalculatorTest {
         assertEquals(87_000L, result.base)
         assertEquals(116_000L, result.optimistic)
         assertEquals(5.7108, result.baseGapPercent, 0.0001)
-        assertEquals(FairValueBand.BETWEEN_CONSERVATIVE_AND_BASE, result.band)
+        assertEquals(PerReferenceBand.BETWEEN_CONSERVATIVE_AND_BASE, result.band)
     }
 
     @Test
     fun roundsReferencePricesToNearestHundredWon() {
-        val result = FairValueCalculator.calculate(
+        val result = PerReferenceCalculator.calculate(
             eps = 585.0,
             assumptions = PerAssumptions(10.0, 15.0, 20.0),
             currentPrice = 5_850L
@@ -38,7 +38,7 @@ class FairValueCalculatorTest {
 
     @Test
     fun returnsZeroGapWhenCurrentPriceMatchesBaseReference() {
-        val result = FairValueCalculator.calculate(
+        val result = PerReferenceCalculator.calculate(
             eps = 5_800.0,
             assumptions = PerAssumptions(),
             currentPrice = 87_000L
@@ -51,28 +51,28 @@ class FairValueCalculatorTest {
     fun rejectsNonPositiveOrNonFiniteEps() {
         val assumptions = PerAssumptions()
 
-        assertNull(FairValueCalculator.calculate(0.0, assumptions, 82_300L))
-        assertNull(FairValueCalculator.calculate(-100.0, assumptions, 82_300L))
-        assertNull(FairValueCalculator.calculate(Double.NaN, assumptions, 82_300L))
-        assertNull(FairValueCalculator.calculate(Double.POSITIVE_INFINITY, assumptions, 82_300L))
+        assertNull(PerReferenceCalculator.calculate(0.0, assumptions, 82_300L))
+        assertNull(PerReferenceCalculator.calculate(-100.0, assumptions, 82_300L))
+        assertNull(PerReferenceCalculator.calculate(Double.NaN, assumptions, 82_300L))
+        assertNull(PerReferenceCalculator.calculate(Double.POSITIVE_INFINITY, assumptions, 82_300L))
     }
 
     @Test
     fun rejectsInvalidPerOrderAndCurrentPrice() {
         assertNull(
-            FairValueCalculator.calculate(
+            PerReferenceCalculator.calculate(
                 5_800.0,
                 PerAssumptions(20.0, 15.0, 10.0),
                 82_300L
             )
         )
         assertNull(
-            FairValueCalculator.calculate(
+            PerReferenceCalculator.calculate(
                 5_800.0,
                 PerAssumptions(0.0, 15.0, 20.0),
                 82_300L
             )
         )
-        assertNull(FairValueCalculator.calculate(5_800.0, PerAssumptions(), 0L))
+        assertNull(PerReferenceCalculator.calculate(5_800.0, PerAssumptions(), 0L))
     }
 }

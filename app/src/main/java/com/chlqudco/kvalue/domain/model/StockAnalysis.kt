@@ -15,7 +15,11 @@ data class PriceSummary(
 
 data class PricePoint(
     val date: LocalDate,
-    val close: Long
+    val close: Long,
+    val open: Long? = null,
+    val high: Long? = null,
+    val low: Long? = null,
+    val volume: Long? = null
 )
 
 data class FinancialRatios(

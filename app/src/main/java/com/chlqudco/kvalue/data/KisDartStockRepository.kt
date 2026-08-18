@@ -7,6 +7,7 @@ import com.chlqudco.kvalue.data.remote.ApiCallException
 import com.chlqudco.kvalue.data.remote.DartCorpCodeDataSource
 import com.chlqudco.kvalue.data.remote.KisApiClient
 import com.chlqudco.kvalue.domain.model.SupportStatus
+import com.chlqudco.kvalue.domain.model.StockSearchSuggestion
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -76,6 +77,47 @@ internal class KisDartStockRepository(
         } catch (_: Exception) {
             AppLogger.analysisFailed(stockCode, AppError.Unknown, startedAtMillis)
             StockAnalysisResult.Failure(AppError.Unknown)
+        }
+    }
+
+    override suspend fun searchStocks(query: String, limit: Int): StockSearchResult {
+        val trace = AppLogger.requestStarted("APP", "stock_search")
+        return try {
+            val suggestions = dartCorpCodeDataSource.searchCompanies(query, limit).map {
+                StockSearchSuggestion(
+                    stockCode = it.stockCode,
+                    companyName = it.corpName
+                )
+            }
+            AppLogger.requestSucceeded(trace, suggestions.size)
+            StockSearchResult.Success(suggestions)
+        } catch (cancellation: CancellationException) {
+            AppLogger.requestCancelled(trace)
+            throw cancellation
+        } catch (error: ApiCallException) {
+            AppLogger.requestFailed(trace, error.error)
+            StockSearchResult.Failure(error.error)
+        } catch (_: Exception) {
+            AppLogger.requestFailed(trace, AppError.Unknown)
+            StockSearchResult.Failure(AppError.Unknown)
+        }
+    }
+
+    override suspend fun preloadStockCatalog(): StockCatalogResult {
+        val trace = AppLogger.requestStarted("APP", "stock_catalog_preload")
+        return try {
+            val stockCount = dartCorpCodeDataSource.preloadCompanies()
+            AppLogger.requestSucceeded(trace, stockCount)
+            StockCatalogResult.Success(stockCount)
+        } catch (cancellation: CancellationException) {
+            AppLogger.requestCancelled(trace)
+            throw cancellation
+        } catch (error: ApiCallException) {
+            AppLogger.requestFailed(trace, error.error)
+            StockCatalogResult.Failure(error.error)
+        } catch (_: Exception) {
+            AppLogger.requestFailed(trace, AppError.Unknown)
+            StockCatalogResult.Failure(AppError.Unknown)
         }
     }
 

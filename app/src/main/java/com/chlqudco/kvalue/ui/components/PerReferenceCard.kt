@@ -21,8 +21,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.chlqudco.kvalue.R
 import com.chlqudco.kvalue.common.NumberFormatter
-import com.chlqudco.kvalue.domain.model.FairValueBand
-import com.chlqudco.kvalue.domain.model.FairValueResult
+import com.chlqudco.kvalue.domain.model.PerReferenceBand
+import com.chlqudco.kvalue.domain.model.PerReferenceResult
 import com.chlqudco.kvalue.domain.model.StockAnalysis
 import com.chlqudco.kvalue.ui.PerInputError
 import com.chlqudco.kvalue.ui.PerInputFields
@@ -30,10 +30,10 @@ import com.chlqudco.kvalue.ui.PerScenario
 import kotlin.math.abs
 
 @Composable
-fun FairValueCard(
+fun PerReferenceCard(
     analysis: StockAnalysis,
     inputs: PerInputFields,
-    result: FairValueResult?,
+    result: PerReferenceResult?,
     inputError: PerInputError?,
     onPerChanged: (PerScenario, String) -> Unit,
     modifier: Modifier = Modifier
@@ -50,7 +50,7 @@ fun FairValueCard(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                text = stringResource(R.string.fair_value_title),
+                text = stringResource(R.string.per_reference_title),
                 style = MaterialTheme.typography.titleMedium
             )
             Text(
@@ -76,17 +76,17 @@ fun FairValueCard(
             if (result == null) {
                 Text(
                     text = if (analysis.ratios.eps == null) {
-                        stringResource(R.string.fair_value_unavailable_missing)
+                        stringResource(R.string.per_reference_unavailable_missing)
                     } else {
-                        stringResource(R.string.fair_value_unavailable_non_positive)
+                        stringResource(R.string.per_reference_unavailable_non_positive)
                     },
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             } else {
-                FairValueResults(result)
+                PerReferenceResults(result)
             }
             Text(
-                text = stringResource(R.string.disclaimer),
+                text = stringResource(R.string.per_disclaimer),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
@@ -165,7 +165,7 @@ private fun PerField(
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-private fun FairValueResults(result: FairValueResult) {
+private fun PerReferenceResults(result: PerReferenceResult) {
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         val itemWidth = if (maxWidth >= 320.dp) {
             (maxWidth - 24.dp) / 3
@@ -197,26 +197,26 @@ private fun FairValueResults(result: FairValueResult) {
     Text(
         text = when {
             result.baseGapPercent > 0.0 -> stringResource(
-                R.string.fair_value_gap_lower,
+                R.string.per_reference_gap_lower,
                 NumberFormatter.percentage(abs(result.baseGapPercent))
             )
             result.baseGapPercent < 0.0 -> stringResource(
-                R.string.fair_value_gap_higher,
+                R.string.per_reference_gap_higher,
                 NumberFormatter.percentage(abs(result.baseGapPercent))
             )
-            else -> stringResource(R.string.fair_value_gap_equal)
+            else -> stringResource(R.string.per_reference_gap_equal)
         },
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onPrimaryContainer
     )
     Text(
         text = when (result.band) {
-            FairValueBand.BELOW_CONSERVATIVE -> stringResource(R.string.band_below_conservative)
-            FairValueBand.BETWEEN_CONSERVATIVE_AND_BASE ->
+            PerReferenceBand.BELOW_CONSERVATIVE -> stringResource(R.string.band_below_conservative)
+            PerReferenceBand.BETWEEN_CONSERVATIVE_AND_BASE ->
                 stringResource(R.string.band_conservative_to_base)
-            FairValueBand.BETWEEN_BASE_AND_OPTIMISTIC ->
+            PerReferenceBand.BETWEEN_BASE_AND_OPTIMISTIC ->
                 stringResource(R.string.band_base_to_optimistic)
-            FairValueBand.ABOVE_OPTIMISTIC -> stringResource(R.string.band_above_optimistic)
+            PerReferenceBand.ABOVE_OPTIMISTIC -> stringResource(R.string.band_above_optimistic)
         },
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onPrimaryContainer

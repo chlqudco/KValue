@@ -103,7 +103,11 @@ internal class KisApiClient(
             val row = item as? JsonObject ?: return@mapNotNull null
             KisChartPointDto(
                 date = row.string("stck_bsop_date"),
-                close = row.string("stck_clpr")
+                close = row.string("stck_clpr"),
+                open = row.string("stck_oprc"),
+                high = row.string("stck_hgpr"),
+                low = row.string("stck_lwpr"),
+                volume = row.string("acml_vol")
             )
         }
         KisChartDto(

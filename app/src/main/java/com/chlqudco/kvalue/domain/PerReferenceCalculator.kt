@@ -1,16 +1,16 @@
 package com.chlqudco.kvalue.domain
 
-import com.chlqudco.kvalue.domain.model.FairValueBand
-import com.chlqudco.kvalue.domain.model.FairValueResult
+import com.chlqudco.kvalue.domain.model.PerReferenceBand
+import com.chlqudco.kvalue.domain.model.PerReferenceResult
 import com.chlqudco.kvalue.domain.model.PerAssumptions
 import kotlin.math.roundToLong
 
-object FairValueCalculator {
+object PerReferenceCalculator {
     fun calculate(
         eps: Double,
         assumptions: PerAssumptions,
         currentPrice: Long
-    ): FairValueResult? {
+    ): PerReferenceResult? {
         val values = listOf(
             eps,
             assumptions.conservative,
@@ -29,12 +29,12 @@ object FairValueCalculator {
         if (!gap.isFinite()) return null
 
         val band = when {
-            currentPrice < conservative -> FairValueBand.BELOW_CONSERVATIVE
-            currentPrice <= base -> FairValueBand.BETWEEN_CONSERVATIVE_AND_BASE
-            currentPrice <= optimistic -> FairValueBand.BETWEEN_BASE_AND_OPTIMISTIC
-            else -> FairValueBand.ABOVE_OPTIMISTIC
+            currentPrice < conservative -> PerReferenceBand.BELOW_CONSERVATIVE
+            currentPrice <= base -> PerReferenceBand.BETWEEN_CONSERVATIVE_AND_BASE
+            currentPrice <= optimistic -> PerReferenceBand.BETWEEN_BASE_AND_OPTIMISTIC
+            else -> PerReferenceBand.ABOVE_OPTIMISTIC
         }
-        return FairValueResult(
+        return PerReferenceResult(
             conservative = conservative,
             base = base,
             optimistic = optimistic,

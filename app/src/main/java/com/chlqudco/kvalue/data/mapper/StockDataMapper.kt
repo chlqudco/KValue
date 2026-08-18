@@ -143,7 +143,18 @@ internal object StockDataMapper {
                     LocalDate.parse(point.date, DateTimeFormatter.BASIC_ISO_DATE)
                 }.getOrNull()
                 val close = point.close.toLongValue()?.takeIf { it > 0L }
-                if (date == null || close == null) null else PricePoint(date, close)
+                if (date == null || close == null) {
+                    null
+                } else {
+                    PricePoint(
+                        date = date,
+                        close = close,
+                        open = point.open.toLongValue()?.takeIf { it > 0L },
+                        high = point.high.toLongValue()?.takeIf { it > 0L },
+                        low = point.low.toLongValue()?.takeIf { it > 0L },
+                        volume = point.volume.toLongValue()?.takeIf { it >= 0L }
+                    )
+                }
             }
             .distinctBy(PricePoint::date)
             .sortedBy(PricePoint::date)

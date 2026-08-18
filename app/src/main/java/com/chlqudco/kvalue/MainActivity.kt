@@ -33,8 +33,10 @@ class MainActivity : ComponentActivity() {
                     state = state,
                     onQueryChanged = stockViewModel::onQueryChanged,
                     onSearch = stockViewModel::search,
+                    onSuggestionSelected = stockViewModel::onSuggestionSelected,
                     onRefresh = stockViewModel::refresh,
                     onPerChanged = stockViewModel::onPerChanged,
+                    onSrimChanged = stockViewModel::onSrimChanged,
                     onOpenDart = ::openExternalUrl
                 )
             }

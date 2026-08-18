@@ -3,6 +3,7 @@ package com.chlqudco.kvalue.common
 import android.os.SystemClock
 import android.util.Log
 import com.chlqudco.kvalue.BuildConfig
+import com.chlqudco.kvalue.domain.model.ComprehensiveAnalysisResult
 
 internal data class LogTrace(
     val provider: String,
@@ -170,6 +171,50 @@ internal object AppLogger {
             fields = listOf(
                 "stock" to stockCode,
                 "duration_ms" to elapsedSince(startedAtMillis)
+            )
+        )
+    }
+
+    fun referenceValueCalculated(
+        stockCode: String,
+        model: String,
+        available: Boolean
+    ) {
+        emit(
+            priority = Log.DEBUG,
+            event = "reference_value_calculated",
+            fields = listOf(
+                "stock" to stockCode,
+                "model" to model,
+                "available" to available
+            )
+        )
+    }
+
+    fun referenceValueInputRejected(model: String, field: String) {
+        emit(
+            priority = Log.DEBUG,
+            event = "reference_value_input_rejected",
+            fields = listOf(
+                "model" to model,
+                "field" to field
+            )
+        )
+    }
+
+    fun comprehensiveAnalysisCalculated(
+        stockCode: String,
+        result: ComprehensiveAnalysisResult
+    ) {
+        emit(
+            priority = Log.DEBUG,
+            event = "comprehensive_analysis_calculated",
+            fields = listOf(
+                "stock" to stockCode,
+                "reference_methods" to result.reference?.methods?.size,
+                "technical_available" to (result.technical != null),
+                "view" to result.view.name.lowercase(),
+                "score" to result.score
             )
         )
     }

@@ -6,17 +6,17 @@ data class PerAssumptions(
     val optimistic: Double = 20.0
 )
 
-enum class FairValueBand {
+enum class PerReferenceBand {
     BELOW_CONSERVATIVE,
     BETWEEN_CONSERVATIVE_AND_BASE,
     BETWEEN_BASE_AND_OPTIMISTIC,
     ABOVE_OPTIMISTIC
 }
 
-data class FairValueResult(
+data class PerReferenceResult(
     val conservative: Long,
     val base: Long,
     val optimistic: Long,
     val baseGapPercent: Double,
-    val band: FairValueBand
+    val band: PerReferenceBand
 )

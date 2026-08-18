@@ -16,6 +16,8 @@ object NumberFormatter {
 
     fun multiple(value: Double): String = "${decimal(value)}배"
 
+    fun number(value: Double): String = decimal(value)
+
     fun percentage(value: Double): String = "${decimal(value)}%"
 
     fun signedPercentage(value: Double): String {

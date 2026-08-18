@@ -11,6 +11,8 @@ import com.chlqudco.kvalue.domain.model.MarketType
 import com.chlqudco.kvalue.domain.model.PricePoint
 import com.chlqudco.kvalue.domain.model.PriceSummary
 import com.chlqudco.kvalue.domain.model.StockAnalysis
+import com.chlqudco.kvalue.domain.StockSearchMatcher
+import com.chlqudco.kvalue.domain.model.StockSearchSuggestion
 import com.chlqudco.kvalue.domain.model.SupportStatus
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -54,6 +56,25 @@ class SampleStockRepository : StockRepository {
         )
         return StockAnalysisResult.Success(analysis)
     }
+
+    override suspend fun searchStocks(query: String, limit: Int): StockSearchResult {
+        val trace = AppLogger.requestStarted("SAMPLE", "stock_search")
+        val suggestions = StockSearchMatcher.find(SAMPLE_STOCKS, query, limit)
+        AppLogger.requestSucceeded(trace, suggestions.size)
+        return StockSearchResult.Success(suggestions)
+    }
+
+    override suspend fun preloadStockCatalog(): StockCatalogResult {
+        val trace = AppLogger.requestStarted("SAMPLE", "stock_catalog_preload")
+        AppLogger.requestSucceeded(trace, SAMPLE_STOCKS.size)
+        return StockCatalogResult.Success(SAMPLE_STOCKS.size)
+    }
+
+    private companion object {
+        val SAMPLE_STOCKS = listOf(
+            StockSearchSuggestion("005930", "삼성전자")
+        )
+    }
 }
 
 object SampleStockData {
@@ -66,9 +87,24 @@ object SampleStockData {
         val history = tradingDays.mapIndexed { index, date ->
             val trend = 68_000L + index * 145L
             val wave = (sin(index / 5.2) * 3_100.0).roundToLong()
-            PricePoint(date = date, close = trend + wave)
+            val close = trend + wave
+            val open = close + ((index % 7) - 3) * 120L
+            PricePoint(
+                date = date,
+                close = close,
+                open = open,
+                high = maxOf(open, close) + 650L + index % 4 * 80L,
+                low = minOf(open, close) - 620L - index % 3 * 70L,
+                volume = 8_000_000L + index % 11 * 620_000L
+            )
         }.toMutableList()
-        history[history.lastIndex] = history.last().copy(close = 82_300L)
+        history[history.lastIndex] = history.last().copy(
+            close = 82_300L,
+            open = 81_700L,
+            high = 83_000L,
+            low = 81_200L,
+            volume = 16_500_000L
+        )
 
         return StockAnalysis(
             stockCode = "005930",

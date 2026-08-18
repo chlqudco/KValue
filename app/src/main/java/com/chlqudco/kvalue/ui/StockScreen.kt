@@ -1,5 +1,6 @@
 package com.chlqudco.kvalue.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -41,14 +42,17 @@ import com.chlqudco.kvalue.R
 import com.chlqudco.kvalue.common.AppError
 import com.chlqudco.kvalue.common.NumberFormatter
 import com.chlqudco.kvalue.domain.model.StockAnalysis
+import com.chlqudco.kvalue.domain.model.StockSearchSuggestion
 import com.chlqudco.kvalue.domain.model.MissingDataSection
 import com.chlqudco.kvalue.domain.model.DataProvider
 import com.chlqudco.kvalue.domain.model.DataType
 import com.chlqudco.kvalue.domain.model.SupportReason
 import com.chlqudco.kvalue.domain.model.SupportStatus
-import com.chlqudco.kvalue.ui.components.FairValueCard
+import com.chlqudco.kvalue.ui.components.ComprehensiveAnalysisCard
+import com.chlqudco.kvalue.ui.components.PerReferenceCard
 import com.chlqudco.kvalue.ui.components.FinancialSummary
 import com.chlqudco.kvalue.ui.components.PriceChart
+import com.chlqudco.kvalue.ui.components.SrimValueCard
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -57,8 +61,10 @@ fun StockScreen(
     state: StockUiState,
     onQueryChanged: (String) -> Unit,
     onSearch: () -> Unit,
+    onSuggestionSelected: (StockSearchSuggestion) -> Unit,
     onRefresh: () -> Unit,
     onPerChanged: (PerScenario, String) -> Unit,
+    onSrimChanged: (SrimInputField, String) -> Unit,
     onOpenDart: (String) -> Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -100,9 +106,12 @@ fun StockScreen(
                 SearchSection(
                     query = state.query,
                     queryError = state.queryError,
-                    loadingCode = (state.content as? StockContentState.Loading)?.stockCode,
+                    catalog = state.catalog,
+                    suggestions = state.suggestions,
+                    loadingQuery = (state.content as? StockContentState.Loading)?.submittedQuery,
                     onQueryChanged = onQueryChanged,
-                    onSearch = onSearch
+                    onSearch = onSearch,
+                    onSuggestionSelected = onSuggestionSelected
                 )
             }
             item {
@@ -115,6 +124,7 @@ fun StockScreen(
                             state = state,
                             onRefresh = onRefresh,
                             onPerChanged = onPerChanged,
+                            onSrimChanged = onSrimChanged,
                             onOpenDart = {
                                 if (!onOpenDart(content.analysis.dartUrl)) {
                                     scope.launch { snackbarHostState.showSnackbar(dartError) }
@@ -147,49 +157,180 @@ fun StockScreen(
 private fun SearchSection(
     query: String,
     queryError: QueryInputError?,
-    loadingCode: String?,
+    catalog: StockCatalogState,
+    suggestions: StockSuggestionState,
+    loadingQuery: String?,
     onQueryChanged: (String) -> Unit,
-    onSearch: () -> Unit
+    onSearch: () -> Unit,
+    onSuggestionSelected: (StockSearchSuggestion) -> Unit
 ) {
     val errorText = when (queryError) {
         QueryInputError.EMPTY -> stringResource(R.string.query_error_empty)
-        QueryInputError.INVALID_FORMAT -> stringResource(R.string.query_error_format)
+        QueryInputError.NO_MATCH -> stringResource(R.string.query_error_no_match)
+        QueryInputError.SELECT_SUGGESTION -> {
+            stringResource(R.string.query_error_select_suggestion)
+        }
         null -> null
     }
-    val canSearch = loadingCode == null || loadingCode != query.trim()
+    val canSearch = loadingQuery == null || loadingQuery != query.trim()
     Card(modifier = Modifier.fillMaxWidth()) {
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            if (maxWidth < 340.dp) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    StockCodeField(
-                        query = query,
-                        errorText = errorText,
-                        onQueryChanged = onQueryChanged,
-                        onSearch = onSearch,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    SearchButton(
-                        enabled = canSearch,
-                        onSearch = onSearch,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+            val useVerticalLayout = maxWidth < 340.dp
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (useVerticalLayout) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        StockCodeField(
+                            query = query,
+                            errorText = errorText,
+                            onQueryChanged = onQueryChanged,
+                            onSearch = onSearch,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        SearchButton(
+                            enabled = canSearch,
+                            onSearch = onSearch,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        StockCodeField(
+                            query = query,
+                            errorText = errorText,
+                            onQueryChanged = onQueryChanged,
+                            onSearch = onSearch,
+                            modifier = Modifier.weight(1f)
+                        )
+                        SearchButton(enabled = canSearch, onSearch = onSearch)
+                    }
                 }
+                StockSearchSuggestions(
+                    state = suggestions,
+                    onSuggestionSelected = onSuggestionSelected
+                )
+                StockCatalogStatus(catalog)
+            }
+        }
+    }
+}
+
+@Composable
+private fun StockCatalogStatus(state: StockCatalogState) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("stock_catalog_status"),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (state is StockCatalogState.Loading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp
+            )
+        }
+        Text(
+            text = when (state) {
+                StockCatalogState.Loading -> stringResource(R.string.catalog_preloading)
+                is StockCatalogState.Ready -> stringResource(
+                    R.string.catalog_ready,
+                    state.stockCount
+                )
+                is StockCatalogState.Error -> stringResource(R.string.catalog_error)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = if (state is StockCatalogState.Error) {
+                MaterialTheme.colorScheme.error
             } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    StockCodeField(
-                        query = query,
-                        errorText = errorText,
-                        onQueryChanged = onQueryChanged,
-                        onSearch = onSearch,
-                        modifier = Modifier.weight(1f)
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+        )
+    }
+}
+
+@Composable
+private fun StockSearchSuggestions(
+    state: StockSuggestionState,
+    onSuggestionSelected: (StockSearchSuggestion) -> Unit
+) {
+    when (state) {
+        StockSuggestionState.Hidden -> Unit
+        StockSuggestionState.Loading -> {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp
+                )
+                Text(
+                    text = stringResource(R.string.suggestion_loading),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+        is StockSuggestionState.Results -> {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("stock_search_suggestions"),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                state.suggestions.forEach { suggestion ->
+                    val description = stringResource(
+                        R.string.suggestion_accessibility,
+                        suggestion.companyName,
+                        suggestion.stockCode
                     )
-                    SearchButton(enabled = canSearch, onSearch = onSearch)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .testTag("stock_suggestion_${suggestion.stockCode}")
+                            .semantics(mergeDescendants = true) {
+                                contentDescription = description
+                            }
+                            .clickable { onSuggestionSelected(suggestion) }
+                            .padding(horizontal = 4.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = suggestion.companyName,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = suggestion.stockCode,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
+        }
+        StockSuggestionState.NoResults -> {
+            Text(
+                text = stringResource(R.string.suggestion_no_results),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        is StockSuggestionState.Error -> {
+            Text(
+                text = stringResource(R.string.suggestion_error),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error
+            )
         }
     }
 }
@@ -212,7 +353,7 @@ private fun StockCodeField(
         isError = errorText != null,
         singleLine = true,
         keyboardOptions = KeyboardOptions(
-            keyboardType = KeyboardType.Number,
+            keyboardType = KeyboardType.Text,
             imeAction = ImeAction.Search
         ),
         keyboardActions = KeyboardActions(onSearch = { onSearch() })
@@ -277,18 +418,29 @@ private fun SuccessContent(
     state: StockUiState,
     onRefresh: () -> Unit,
     onPerChanged: (PerScenario, String) -> Unit,
+    onSrimChanged: (SrimInputField, String) -> Unit,
     onOpenDart: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         PriceSummaryCard(analysis, onRefresh)
         PriceChart(analysis.priceHistory)
         FinancialSummary(analysis.ratios, analysis.annualFinancials)
-        FairValueCard(
+        state.comprehensiveAnalysis?.let {
+            ComprehensiveAnalysisCard(it)
+        }
+        PerReferenceCard(
             analysis = analysis,
             inputs = state.perInputs,
-            result = state.fairValue,
+            result = state.perReference,
             inputError = state.perInputError,
             onPerChanged = onPerChanged
+        )
+        SrimValueCard(
+            analysis = analysis,
+            inputs = state.srimInputs,
+            result = state.srimValue,
+            inputError = state.srimInputError,
+            onInputChanged = onSrimChanged
         )
         DartButton(onOpenDart)
         SourcesCard(analysis)

@@ -3,6 +3,8 @@ package com.chlqudco.kvalue.data.remote
 import android.util.Xml
 import com.chlqudco.kvalue.common.AppError
 import com.chlqudco.kvalue.common.AppLogger
+import com.chlqudco.kvalue.domain.StockSearchMatcher
+import com.chlqudco.kvalue.domain.model.StockSearchSuggestion
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.IOException
@@ -62,6 +64,24 @@ internal class DartCorpCodeDataSource(
         }
     }
 
+    suspend fun searchCompanies(query: String, limit: Int): List<DartCompanyDto> = traced(
+        operation = "corp_code_search",
+        stockCode = null,
+        itemCount = List<DartCompanyDto>::size
+    ) {
+        val companiesByCode = loadCompanies()
+        val suggestions = companiesByCode.values.map {
+            StockSearchSuggestion(
+                stockCode = it.stockCode,
+                companyName = it.corpName
+            )
+        }
+        val matches = StockSearchMatcher.find(suggestions, query, limit)
+        matches.mapNotNull { companiesByCode[it.stockCode] }
+    }
+
+    suspend fun preloadCompanies(): Int = loadCompanies().size
+
     private suspend fun loadCompanies(): Map<String, DartCompanyDto> = loadMutex.withLock {
         companies?.let {
             AppLogger.cacheHit("OpenDART", "corp_code_list", "memory")
@@ -74,7 +94,12 @@ internal class DartCorpCodeDataSource(
             itemCount = { it.size }
         ) {
             try {
-                withContext(Dispatchers.IO) { parseCompanies(source) }
+                withContext(Dispatchers.IO) {
+                    val indexFile = File(cacheDirectory, INDEX_FILE_NAME)
+                    readCompanyIndex(indexFile, source) ?: parseCompanies(source).also {
+                        writeCompanyIndex(indexFile, it)
+                    }
+                }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: ApiCallException) {
@@ -219,6 +244,55 @@ internal class DartCorpCodeDataSource(
         return result
     }
 
+    private fun readCompanyIndex(
+        indexFile: File,
+        sourceFile: File
+    ): Map<String, DartCompanyDto>? {
+        if (!indexFile.isFile || indexFile.lastModified() < sourceFile.lastModified()) return null
+        val result = linkedMapOf<String, DartCompanyDto>()
+        indexFile.useLines(Charsets.UTF_8) { lines ->
+            lines.forEach { line ->
+                val values = line.split('\t', limit = 4)
+                if (values.size != 4) return@forEach
+                val stockCode = values[0]
+                if (stockCode.length != 6 || !stockCode.all(Char::isDigit)) return@forEach
+                result[stockCode] = DartCompanyDto(
+                    corpCode = values[1],
+                    modifiedDate = values[2],
+                    corpName = values[3],
+                    stockCode = stockCode
+                )
+            }
+        }
+        if (result.isEmpty()) return null
+        AppLogger.cacheHit("OpenDART", "corp_code_index", "private_storage")
+        return result
+    }
+
+    private fun writeCompanyIndex(
+        indexFile: File,
+        values: Map<String, DartCompanyDto>
+    ) {
+        runCatching {
+            cacheDirectory.mkdirs()
+            val temporaryFile = File(cacheDirectory, "$INDEX_FILE_NAME.tmp")
+            temporaryFile.bufferedWriter(Charsets.UTF_8).use { writer ->
+                values.values.sortedBy(DartCompanyDto::stockCode).forEach { company ->
+                    writer.append(company.stockCode)
+                    writer.append('\t')
+                    writer.append(company.corpCode)
+                    writer.append('\t')
+                    writer.append(company.modifiedDate)
+                    writer.append('\t')
+                    writer.append(company.corpName.replace('\t', ' ').replace('\n', ' '))
+                    writer.newLine()
+                }
+            }
+            temporaryFile.copyTo(indexFile, overwrite = true)
+            temporaryFile.delete()
+        }
+    }
+
     private suspend fun Call.awaitBytes(): RawByteResponse =
         suspendCancellableCoroutine { continuation ->
             continuation.invokeOnCancellation { cancel() }
@@ -260,6 +334,7 @@ internal class DartCorpCodeDataSource(
     private companion object {
         const val DART_BASE_URL = "https://opendart.fss.or.kr"
         const val CACHE_FILE_NAME = "dart_corp_codes.zip"
+        const val INDEX_FILE_NAME = "dart_listed_companies.tsv"
         val CACHE_LIFETIME_MILLIS = TimeUnit.DAYS.toMillis(7)
     }
 }

@@ -25,7 +25,14 @@ class StockDataMapperTest {
             chart = KisChartDto(
                 companyName = "삼성전자",
                 points = listOf(
-                    KisChartPointDto("20260814", "82000"),
+                    KisChartPointDto(
+                        date = "20260814",
+                        close = "82000",
+                        open = "81000",
+                        high = "82500",
+                        low = "80500",
+                        volume = "12345678"
+                    ),
                     KisChartPointDto("20260812", "80000"),
                     KisChartPointDto("20260813", "81000"),
                     KisChartPointDto("20260813", "81000")
@@ -56,6 +63,10 @@ class StockDataMapperTest {
         analysis ?: return
         assertEquals(82_000L, analysis.price.currentPrice)
         assertEquals(1.25, analysis.price.changeRate!!, 0.0)
+        assertEquals(81_000L, analysis.priceHistory.last().open)
+        assertEquals(82_500L, analysis.priceHistory.last().high)
+        assertEquals(80_500L, analysis.priceHistory.last().low)
+        assertEquals(12_345_678L, analysis.priceHistory.last().volume)
         assertEquals(
             listOf(
                 LocalDate.of(2026, 8, 12),

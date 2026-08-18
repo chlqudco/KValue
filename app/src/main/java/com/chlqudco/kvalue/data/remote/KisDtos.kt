@@ -20,7 +20,11 @@ internal data class KisChartDto(
 
 internal data class KisChartPointDto(
     val date: String?,
-    val close: String?
+    val close: String?,
+    val open: String? = null,
+    val high: String? = null,
+    val low: String? = null,
+    val volume: String? = null
 )
 
 internal data class KisFinancialRatioDto(
